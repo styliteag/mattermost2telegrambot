@@ -54,7 +54,20 @@ docker compose up -d
   to see. Use a dedicated user account added to everything relevant.
 - A true bot account cannot receive DMs from humans unless DMs-to-bots
   are enabled in System Console → Bot Accounts.
-- Getting `TG_CHAT_ID`: message your bot, then hit
-  `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+- Getting `TG_CHAT_ID`:
+  - **Private DM (bot sends only to you):** open `@userinfobot` in
+    Telegram and press Start — it replies with your numeric user id
+    (a positive number, e.g. `165089403`). Use that as `TG_CHAT_ID`.
+    You must also send `/start` (or any message) to your own bot once,
+    otherwise it cannot initiate the DM.
+  - **Group chat (bot posts into a shared group):** add your bot to
+    the group, then also add `@RawDataBot` (or `@myidbot`). It posts
+    the group's chat id, which starts with `-` (e.g. `-1001234567890`
+    for supergroups). Remove the helper bot afterwards. Your own bot
+    must stay in the group to post.
+  - **Channel (bot broadcasts into a Telegram channel):** add your
+    bot to the channel as an **admin** with post permissions. Forward
+    any message from the channel to `@RawDataBot` to get its id
+    (also starts with `-100…`).
 - Messages are split at 3900 chars (Telegram's limit is 4096).
 - Notifications are muted (`disable_notification=true`).
