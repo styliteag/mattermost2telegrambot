@@ -33,6 +33,12 @@ import (
 	"github.com/mattermost/mattermost/server/public/model"
 )
 
+var (
+	version   = "dev"
+	gitHash   = "unknown"
+	buildTime = "unknown"
+)
+
 func env(k string) string {
 	v := os.Getenv(k)
 	if v == "" {
@@ -93,7 +99,8 @@ func main() {
 	}
 	b.bot = bot
 
-	log.Printf("STYLiTE Orbit Mattermost to Telegrambot starting up")
+	log.Printf("STYLiTE Orbit Mattermost to Telegrambot version=%s commit=%s built=%s starting up",
+		version, gitHash, buildTime)
 
 	backoff := newBackoff()
 	for {
