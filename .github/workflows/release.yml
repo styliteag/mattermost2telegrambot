@@ -21,7 +21,6 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Extracted version: $VERSION"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -44,7 +43,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push to Docker Hub
+      # One multi-arch build, pushed to both registries in a single pass.
+      # Cache lives in GitHub Actions (free, fast, no extra registry round-trip).
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -54,29 +55,15 @@ jobs:
           tags: |
             docker.io/styliteag/mattermost2telegrambot:${{ steps.version.outputs.version }}
             docker.io/styliteag/mattermost2telegrambot:latest
-          provenance: false
-          sbom: false
-          cache-from: type=registry,ref=docker.io/styliteag/mattermost2telegrambot:buildcache
-          cache-to: type=registry,ref=docker.io/styliteag/mattermost2telegrambot:buildcache,mode=max
-          build-args: |
-            VERSION=${{ steps.version.outputs.version }}
-
-      - name: Build and push to GHCR
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
             ghcr.io/styliteag/mattermost2telegrambot:${{ steps.version.outputs.version }}
             ghcr.io/styliteag/mattermost2telegrambot:latest
           provenance: false
           sbom: false
-          cache-from: type=registry,ref=ghcr.io/styliteag/mattermost2telegrambot:buildcache
-          cache-to: type=registry,ref=ghcr.io/styliteag/mattermost2telegrambot:buildcache,mode=max
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
+            GITHASH=${{ github.sha }}
 
       - name: Delete old GHCR package versions
         uses: actions/delete-package-versions@v5
@@ -90,7 +77,6 @@ jobs:
       - name: Extract release notes from CHANGELOG
         id: release_notes
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           python3 << 'EOF' > /tmp/release_notes.md
           import os, re
           version = os.environ['VERSION']
