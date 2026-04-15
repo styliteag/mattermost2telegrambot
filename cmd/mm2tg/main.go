@@ -54,8 +54,9 @@ type bridge struct {
 	pass    string
 	mfa     string
 
-	bot    *tgbotapi.BotAPI
-	tgChat int64
+	bot      *tgbotapi.BotAPI
+	tgChat   int64
+	logInfo  bool
 }
 
 func main() {
@@ -66,12 +67,14 @@ func main() {
 		wsScheme = "ws"
 	}
 
+	level := strings.ToLower(envOr("MM_LOGLEVEL", "info"))
 	b := &bridge{
 		httpURL: scheme + "://" + server,
 		wsURL:   wsScheme + "://" + server,
 		login:   env("MM_LOGIN"),
 		pass:    env("MM_PASS"),
 		mfa:     os.Getenv("MM_MFA"),
+		logInfo: level == "info" || level == "debug",
 	}
 
 	tgChat, err := strconv.ParseInt(env("TG_CHAT_ID"), 10, 64)
@@ -244,6 +247,11 @@ func (b *bridge) handle(c4 *model.Client4, ev *model.WebSocketEvent) {
 
 	line := fmt.Sprintf("[%s %s/%s] <%s> %s", labelType(chType), teamName, chName, sender, post.Message)
 	b.send(line)
+
+	if b.logInfo {
+		log.Printf("forwarded: type=%s team=%s channel=%s sender=%s len=%d",
+			labelType(chType), teamName, chName, sender, len(post.Message))
+	}
 }
 
 func labelType(t string) string {
