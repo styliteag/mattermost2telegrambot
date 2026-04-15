@@ -1,4 +1,4 @@
-# matterbot2telegram
+# mattermost2telegrambot
 
 One-way firehose from Mattermost to a single Telegram chat.
 

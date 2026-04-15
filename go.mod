@@ -1,4 +1,4 @@
-module github.com/styliteag/matterbot2telegram
+module github.com/styliteag/mattermost2telegrambot
 
 go 1.22.0
 

@@ -1,4 +1,4 @@
-# matterbot2telegram — project context for Claude
+# mattermost2telegrambot — project context for Claude
 
 ## What this is
 
@@ -59,7 +59,7 @@ Option 1 is cleaner. Neither has been done yet.
 
 GitHub Actions builds a multi-arch (amd64, arm64) image on every push
 to `master`/`main` and on tag `v*`, publishing to
-`ghcr.io/styliteag/matterbot2telegram`. Run via `docker-compose.yml`
+`ghcr.io/styliteag/mattermost2telegrambot`. Run via `docker-compose.yml`
 with a `.env` file (see `.env.example`).
 
 ## Conventions
