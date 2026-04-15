@@ -1,0 +1,13 @@
+services:
+  mm2tg:
+    image: ghcr.io/styliteag/matterbot2telegram:latest
+    restart: unless-stopped
+    environment:
+      MM_SERVER: ${MM_SERVER}
+      MM_TEAM: ${MM_TEAM}
+      MM_LOGIN: ${MM_LOGIN}
+      MM_PASS: ${MM_PASS}
+      MM_MFA: ${MM_MFA:-}
+      MM_LOGLEVEL: ${MM_LOGLEVEL:-info}
+      TG_TOKEN: ${TG_TOKEN}
+      TG_CHAT_ID: ${TG_CHAT_ID}
