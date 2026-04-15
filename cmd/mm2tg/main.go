@@ -22,6 +22,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"os"
 	"strconv"
@@ -245,8 +246,10 @@ func (b *bridge) handle(c4 *model.Client4, ev *model.WebSocketEvent) {
 		teamName = "-"
 	}
 
-	line := fmt.Sprintf("[%s %s/%s] <%s> %s", labelType(chType), teamName, chName, sender, post.Message)
-	b.send(line)
+	header := fmt.Sprintf("%s <b>%s</b> · <i>%s/%s</i>",
+		typeIcon(chType), html.EscapeString(sender), html.EscapeString(teamName), html.EscapeString(chName))
+	body := html.EscapeString(post.Message)
+	b.send(header + "\n" + body)
 
 	if b.logInfo {
 		log.Printf("forwarded: type=%s team=%s channel=%s sender=%s len=%d",
@@ -269,21 +272,65 @@ func labelType(t string) string {
 	}
 }
 
+func typeIcon(t string) string {
+	switch t {
+	case "O":
+		return "#"
+	case "P":
+		return "\U0001F512" // 🔒
+	case "D":
+		return "\U0001F4AC" // 💬
+	case "G":
+		return "\U0001F465" // 👥
+	default:
+		return "\u2753" // ❓
+	}
+}
+
 func (b *bridge) send(text string) {
 	const max = 3900
 	for len(text) > 0 {
-		chunk := text
-		if len(chunk) > max {
-			chunk = chunk[:max]
-		}
-		text = text[len(chunk):]
+		chunk, rest := splitForTelegram(text, max)
+		text = rest
 		msg := tgbotapi.NewMessage(b.tgChat, chunk)
 		msg.DisableNotification = true
+		msg.ParseMode = tgbotapi.ModeHTML
+		msg.DisableWebPagePreview = true
 		if _, err := b.bot.Send(msg); err != nil {
 			log.Printf("telegram send: %v", err)
 			time.Sleep(2 * time.Second)
 		}
 	}
+}
+
+// splitForTelegram returns a prefix of s that is safe to send as one
+// HTML-parse-mode Telegram message, and the remainder. It splits on
+// newline or space when possible, always on a UTF-8 rune boundary,
+// and never inside an `&entity;` sequence.
+func splitForTelegram(s string, max int) (string, string) {
+	if len(s) <= max {
+		return s, ""
+	}
+	cut := max
+	if nl := strings.LastIndexByte(s[:cut], '\n'); nl > max/2 {
+		cut = nl + 1
+	} else if sp := strings.LastIndexByte(s[:cut], ' '); sp > max/2 {
+		cut = sp + 1
+	}
+	// back off if we land inside an HTML entity
+	if amp := strings.LastIndexByte(s[:cut], '&'); amp >= 0 {
+		if semi := strings.IndexByte(s[amp:], ';'); semi < 0 || amp+semi >= cut {
+			cut = amp
+		}
+	}
+	// back off to a UTF-8 rune boundary
+	for cut > 0 && (s[cut]&0xC0) == 0x80 {
+		cut--
+	}
+	if cut == 0 {
+		cut = max
+	}
+	return s[:cut], s[cut:]
 }
 
 type backoff struct {
