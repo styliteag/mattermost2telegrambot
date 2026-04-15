@@ -1,7 +1,6 @@
 services:
   mm2tg:
-    #image: ghcr.io/styliteag/mattermost2telegrambot:latest
-    build: .
+    image: ghcr.io/styliteag/mattermost2telegrambot:latest
     restart: unless-stopped
     environment:
       MM_SERVER: ${MM_SERVER}
