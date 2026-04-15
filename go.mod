@@ -55,3 +55,11 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
+
+// Local vendored copy of matterclient with WebSocket stability patches
+// (atomic reconnect guard, stale-pong watchdog, full Login() on reconnect,
+// drop-oldest MessageChan buffer, structured ALIVE/MM-SEND-GW logging).
+// See third_party/matterclient/ for the source. Patches come from
+// https://github.com/styliteag/matterbridge tree/private-messages
+// (vendor/github.com/matterbridge/matterclient/matterclient.go).
+replace github.com/matterbridge/matterclient => ./third_party/matterclient
