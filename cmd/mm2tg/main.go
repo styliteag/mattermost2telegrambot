@@ -55,9 +55,11 @@ type bridge struct {
 	pass    string
 	mfa     string
 
-	bot      *tgbotapi.BotAPI
-	tgChat   int64
-	logInfo  bool
+	bot     *tgbotapi.BotAPI
+	tgChat  int64
+	logInfo bool
+
+	teamNames map[string]string
 }
 
 func main() {
@@ -70,12 +72,13 @@ func main() {
 
 	level := strings.ToLower(envOr("MM_LOGLEVEL", "info"))
 	b := &bridge{
-		httpURL: scheme + "://" + server,
-		wsURL:   wsScheme + "://" + server,
-		login:   env("MM_LOGIN"),
-		pass:    env("MM_PASS"),
-		mfa:     os.Getenv("MM_MFA"),
-		logInfo: level == "info" || level == "debug",
+		httpURL:   scheme + "://" + server,
+		wsURL:     wsScheme + "://" + server,
+		login:     env("MM_LOGIN"),
+		pass:      env("MM_PASS"),
+		mfa:       os.Getenv("MM_MFA"),
+		logInfo:   level == "info" || level == "debug",
+		teamNames: map[string]string{},
 	}
 
 	tgChat, err := strconv.ParseInt(env("TG_CHAT_ID"), 10, 64)
@@ -127,7 +130,7 @@ func (b *bridge) session() error {
 
 	log.Printf("STYLiTE Orbit: logged in as %s, forwarding to telegram chat %d", user.Username, b.tgChat)
 
-	if err := primeSession(ctx, c4, user.Id); err != nil {
+	if err := b.primeSession(ctx, c4, user.Id); err != nil {
 		log.Printf("prime session warning: %v", err)
 	}
 
@@ -186,19 +189,39 @@ func (b *bridge) session() error {
 
 // primeSession makes HTTP calls that Mattermost treats as "real activity" for
 // the session, mirroring what matterclient / the official webapp do after
-// login and before opening the websocket. Without this, sessions can be
-// treated as idle and the server closes the WS ~30s later.
-func primeSession(ctx context.Context, c4 *model.Client4, userID string) error {
+// login and before opening the websocket. It also seeds the teamID → teamName
+// cache used when formatting Telegram messages.
+func (b *bridge) primeSession(ctx context.Context, c4 *model.Client4, userID string) error {
 	teams, _, err := c4.GetTeamsForUser(ctx, userID, "")
 	if err != nil {
 		return fmt.Errorf("GetTeamsForUser: %w", err)
 	}
 	for _, t := range teams {
+		b.teamNames[t.Id] = t.Name
 		if _, _, err := c4.GetChannelsForTeamForUser(ctx, t.Id, userID, false, ""); err != nil {
 			return fmt.Errorf("GetChannelsForTeamForUser(%s): %w", t.Name, err)
 		}
 	}
 	return nil
+}
+
+// teamLabel resolves a team ID to its slug, caching misses via c4.GetTeam.
+func (b *bridge) teamLabel(c4 *model.Client4, teamID string) string {
+	if teamID == "" {
+		return ""
+	}
+	if name, ok := b.teamNames[teamID]; ok {
+		return name
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	t, _, err := c4.GetTeam(ctx, teamID, "")
+	if err != nil || t == nil {
+		b.teamNames[teamID] = ""
+		return ""
+	}
+	b.teamNames[teamID] = t.Name
+	return t.Name
 }
 
 // authenticate handles password, token=<PAT>, and MFA inputs.
@@ -240,20 +263,24 @@ func (b *bridge) handle(c4 *model.Client4, ev *model.WebSocketEvent) {
 	}
 	sender, _ := data["sender_name"].(string)
 	sender = strings.TrimPrefix(sender, "@")
-	teamID := ev.GetBroadcast().TeamId
-	teamName := teamID
-	if teamID == "" {
-		teamName = "-"
-	}
+	teamName := b.teamLabel(c4, ev.GetBroadcast().TeamId)
 
-	header := fmt.Sprintf("%s <b>%s</b> · <i>%s/%s</i>",
-		typeIcon(chType), html.EscapeString(sender), html.EscapeString(teamName), html.EscapeString(chName))
+	location := html.EscapeString(chName)
+	if teamName != "" {
+		location = html.EscapeString(teamName) + "/" + location
+	}
+	header := fmt.Sprintf("%s <b>%s</b> · <i>%s</i>",
+		typeIcon(chType), html.EscapeString(sender), location)
 	body := html.EscapeString(post.Message)
 	b.send(header + "\n" + body)
 
 	if b.logInfo {
+		logTeam := teamName
+		if logTeam == "" {
+			logTeam = "-"
+		}
 		log.Printf("forwarded: type=%s team=%s channel=%s sender=%s len=%d",
-			labelType(chType), teamName, chName, sender, len(post.Message))
+			labelType(chType), logTeam, chName, sender, len(post.Message))
 	}
 }
 
