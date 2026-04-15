@@ -1,4 +1,4 @@
-# mattermost2telegrambot
+# STYLiTE Orbit Mattermost to Telegrambot
 
 One-way firehose from Mattermost to a single Telegram chat.
 

@@ -1,4 +1,4 @@
-// mm2tg: one-way Mattermost -> Telegram firehose.
+// STYLiTE Orbit Mattermost to Telegrambot: one-way Mattermost -> Telegram firehose.
 //
 // Listens to every Mattermost event the logged-in user can see
 // (public, private, DM, group DM) and forwards a formatted line
@@ -66,10 +66,11 @@ func main() {
 
 	mc := matterclient.New(login, pass, team, server, mfa)
 	mc.SetLogLevel(logLevel)
+	log.Printf("STYLiTE Orbit MatterMost to Telegrambot starting up")
 	if err := mc.Login(); err != nil {
 		log.Fatalf("mattermost login: %v", err)
 	}
-	log.Printf("logged in as %s, forwarding to telegram chat %d", mc.User.Username, tgChat)
+	log.Printf("STYLiTE Orbit: logged in as %s, forwarding to telegram chat %d", mc.User.Username, tgChat)
 
 	for msg := range mc.MessageChan {
 		line := format(mc, msg)
