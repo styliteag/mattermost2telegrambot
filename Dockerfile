@@ -6,7 +6,6 @@ RUN apk --no-cache add git
 WORKDIR /src
 
 COPY go.mod go.sum ./
-COPY third_party ./third_party
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     go mod download
