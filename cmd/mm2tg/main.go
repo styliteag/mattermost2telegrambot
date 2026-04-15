@@ -304,7 +304,7 @@ func typeIcon(t string) string {
 	case "O":
 		return "#"
 	case "P":
-		return "\U0001F512" // 🔒
+		return "#\U0001F512" // private channel: hash + tiny padlock
 	case "D":
 		return "\U0001F4AC" // 💬
 	case "G":
