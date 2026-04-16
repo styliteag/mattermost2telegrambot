@@ -9,13 +9,18 @@
 //
 // Env:
 //
-//	MM_SERVER    host of the Mattermost server, e.g. chat.example.com
-//	MM_SCHEME    https or http (default https)
-//	MM_LOGIN     username or email
-//	MM_PASS      password (for token auth, use "token=<PAT>")
-//	MM_MFA       optional MFA token
-//	TG_TOKEN     Telegram bot token
-//	TG_CHAT_ID   target chat id (int64)
+//	MM_SERVER             host of the Mattermost server, e.g. chat.example.com
+//	MM_SCHEME             https or http (default https)
+//	MM_LOGIN              username or email
+//	MM_PASS               password (for token auth, use "token=<PAT>")
+//	MM_MFA                optional MFA token
+//	MM_SKIP_OWN           skip messages from the logged-in user (default "true")
+//	MM_CHANNEL_WHITELIST  comma-separated regexes; only forward matching channels
+//	MM_CHANNEL_BLACKLIST  comma-separated regexes; drop matching channels
+//	MM_SENDER_WHITELIST   comma-separated regexes; only forward matching senders
+//	MM_SENDER_BLACKLIST   comma-separated regexes; drop matching senders
+//	TG_TOKEN              Telegram bot token
+//	TG_CHAT_ID            target chat id (int64)
 package main
 
 import (
@@ -25,6 +30,7 @@ import (
 	"html"
 	"log"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -54,16 +60,76 @@ func envOr(k, d string) string {
 	return d
 }
 
+// regexFilter holds compiled whitelist and blacklist patterns.
+// Whitelist is checked first: if non-empty, the value must match at
+// least one pattern. Then blacklist: if it matches any pattern, it is
+// dropped.
+type regexFilter struct {
+	whitelist []*regexp.Regexp
+	blacklist []*regexp.Regexp
+}
+
+// match returns true if the value passes the filter.
+func (f regexFilter) match(value string) bool {
+	if len(f.whitelist) > 0 {
+		allowed := false
+		for _, re := range f.whitelist {
+			if re.MatchString(value) {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false
+		}
+	}
+	for _, re := range f.blacklist {
+		if re.MatchString(value) {
+			return false
+		}
+	}
+	return true
+}
+
+// parseRegexFilter parses a comma-separated list of regex patterns from
+// an env var value. Returns nil slice if the string is empty. Fatals on
+// invalid regex.
+func parseRegexFilter(envKey, raw string) []*regexp.Regexp {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]*regexp.Regexp, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		re, err := regexp.Compile(p)
+		if err != nil {
+			log.Fatalf("%s: invalid regex %q: %v", envKey, p, err)
+		}
+		out = append(out, re)
+	}
+	return out
+}
+
 type bridge struct {
-	httpURL string
-	wsURL   string
-	login   string
-	pass    string
-	mfa     string
+	httpURL  string
+	wsURL    string
+	login    string
+	pass     string
+	mfa      string
+	username string // logged-in Mattermost username, set after auth
 
 	bot     *tgbotapi.BotAPI
 	tgChat  int64
 	logInfo bool
+	skipOwn bool
+
+	channelFilter regexFilter
+	senderFilter  regexFilter
 
 	teamNames map[string]string
 }
@@ -77,6 +143,7 @@ func main() {
 	}
 
 	level := strings.ToLower(envOr("MM_LOGLEVEL", "info"))
+	skipOwn := strings.ToLower(envOr("MM_SKIP_OWN", "true")) != "false"
 	b := &bridge{
 		httpURL:   scheme + "://" + server,
 		wsURL:     wsScheme + "://" + server,
@@ -84,6 +151,15 @@ func main() {
 		pass:      env("MM_PASS"),
 		mfa:       os.Getenv("MM_MFA"),
 		logInfo:   level == "info" || level == "debug",
+		skipOwn:   skipOwn,
+		channelFilter: regexFilter{
+			whitelist: parseRegexFilter("MM_CHANNEL_WHITELIST", os.Getenv("MM_CHANNEL_WHITELIST")),
+			blacklist: parseRegexFilter("MM_CHANNEL_BLACKLIST", os.Getenv("MM_CHANNEL_BLACKLIST")),
+		},
+		senderFilter: regexFilter{
+			whitelist: parseRegexFilter("MM_SENDER_WHITELIST", os.Getenv("MM_SENDER_WHITELIST")),
+			blacklist: parseRegexFilter("MM_SENDER_BLACKLIST", os.Getenv("MM_SENDER_BLACKLIST")),
+		},
 		teamNames: map[string]string{},
 	}
 
@@ -135,6 +211,7 @@ func (b *bridge) session() error {
 	}
 	c4.SetToken(token)
 
+	b.username = user.Username
 	log.Printf("STYLiTE Orbit: logged in as %s, forwarding to telegram chat %d", user.Username, b.tgChat)
 
 	if err := b.primeSession(ctx, c4, user.Id); err != nil {
@@ -270,7 +347,28 @@ func (b *bridge) handle(c4 *model.Client4, ev *model.WebSocketEvent) {
 	}
 	sender, _ := data["sender_name"].(string)
 	sender = strings.TrimPrefix(sender, "@")
+
+	// Skip own messages.
+	if b.skipOwn && strings.EqualFold(sender, b.username) {
+		return
+	}
+
+	// Apply sender filter.
+	if !b.senderFilter.match(sender) {
+		return
+	}
+
 	teamName := b.teamLabel(c4, ev.GetBroadcast().TeamId)
+
+	// Apply channel filter. Match string is "team/channel" (or just
+	// "channel" when there is no team, e.g. DMs).
+	channelPath := chName
+	if teamName != "" {
+		channelPath = teamName + "/" + chName
+	}
+	if !b.channelFilter.match(channelPath) {
+		return
+	}
 
 	location := html.EscapeString(chName)
 	if teamName != "" {
