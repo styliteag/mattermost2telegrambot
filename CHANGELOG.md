@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-04-16
+
 ### Added
 - Skip own messages: messages from the logged-in user are no longer
   forwarded. Enabled by default, disable with `MM_SKIP_OWN=false`.
